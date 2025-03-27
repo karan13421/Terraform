@@ -99,6 +99,7 @@ resource "google_project_iam_binding" "os_login" {
   members = [for email in local.emails: "user:${email}"]
 }
 
+
 resource "google_logging_project_sink" "iap_audit_log" {
   name        = "iap-audit-logs"
   destination = "storage.googleapis.com/${google_storage_bucket.audit_log_bucket.name}"
@@ -106,4 +107,13 @@ resource "google_logging_project_sink" "iap_audit_log" {
 
   unique_writer_identity = true
   depends_on = [google_project_service.logging]
+}
+
+resource "google_storage_bucket_iam_binding" "audit_log_writer" {
+  bucket = google_storage_bucket.audit_log_bucket.name
+  role   = "roles/storage.objectCreator"
+
+  members = [
+    google_logging_project_sink.iap_audit_log.writer_identity
+  ]
 }
