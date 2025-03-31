@@ -109,8 +109,8 @@ resource "google_compute_health_check" "fastapi_health" {
     request_path = "/"
   }
 
-  timeout_sec = 5
-  check_interval_sec = 10
+  timeout_sec = 20
+  check_interval_sec = 20
   healthy_threshold = 4
   unhealthy_threshold = 5
 }
@@ -146,12 +146,12 @@ resource "google_compute_target_http_proxy" "http_proxy" {
   url_map = google_compute_url_map.url_map.id
 }
 
-# Create a Regional Forwarding Rule (Port 3000)
-resource "google_compute_global_forwarding_rule" "http_forwarding_rule" {
-  name       = "fastapi-forwarding-rule"
-  target     = google_compute_target_http_proxy.http_proxy.id
-  port_range = "80"
-}
+# # Create a Regional Forwarding Rule (Port 3000)
+# resource "google_compute_global_forwarding_rule" "http_forwarding_rule" {
+#   name       = "fastapi-forwarding-rule"
+#   target     = google_compute_target_http_proxy.http_proxy.id
+#   port_range = "80"
+# }
 
 # Firewall Rule to Allow HTTP Traffic on Port 3000
 resource "google_compute_firewall" "allow_fastapi" {
@@ -336,6 +336,6 @@ resource "google_monitoring_notification_channel" "email" {
   display_name = "IAP Admin Alert Email"
   type         = "email"
   labels = {
-    email_address = "karathore@deqode.com" # Replace with your email
+    email_address = "hbd777713421@gmail.com" # Replace with your email
   }
 }
