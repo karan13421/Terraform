@@ -6,7 +6,8 @@ resource "google_project_service" "required_services" {
     "compute.googleapis.com",
     "iap.googleapis.com",
     "logging.googleapis.com",
-    "storage.googleapis.com"
+    "storage.googleapis.com",
+    "cloudkms.googleapis.com"
   ])
   
   project            = local.project_id
@@ -20,6 +21,24 @@ resource "google_compute_network" "custom_vpc" {
   auto_create_subnetworks = false
   depends_on = [google_project_service.required_services]
 }
+
+resource "google_kms_key_ring" "key_ring" {
+  name     = "iap-key-ring"
+  location = "us-central1"
+  project  = local.project_id
+}
+
+
+resource "google_kms_crypto_key" "crypto_key" {
+  name            = "iap-crypto-key"
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = "86400s"  # 1 day rotation period
+
+  # lifecycle {
+  #   prevent_destroy = false
+  # }
+}
+
 
 resource "google_compute_subnetwork" "custom_subnet" {
   name          = "custom-subnet"
@@ -154,19 +173,19 @@ resource "google_compute_target_http_proxy" "http_proxy" {
 # }
 
 # Firewall Rule to Allow HTTP Traffic on Port 3000
-resource "google_compute_firewall" "allow_fastapi" {
-  name    = "allow-fastapi"
-  network = google_compute_network.custom_vpc.id
+# resource "google_compute_firewall" "allow_fastapi" {
+#   name    = "allow-fastapi"
+#   network = google_compute_network.custom_vpc.id
 
-  allow {
-    protocol = "tcp"
-    ports    = ["3000"]
-  }
+#   allow {
+#     protocol = "tcp"
+#     ports    = ["3000"]
+#   }
 
-  direction     = "INGRESS"
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["allow-fastapi"]
-}
+#   direction     = "INGRESS"
+#   source_ranges = ["0.0.0.0/0"]
+#   target_tags   = ["allow-fastapi"]
+# }
 
 # Firewall Rule to Allow SSH via IAP
 resource "google_compute_firewall" "allow_ssh" {
@@ -221,6 +240,19 @@ resource "google_project_iam_audit_config" "audit_config" {
   audit_log_config {
     log_type = "DATA_WRITE"
   }
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+}
+
+resource "google_project_iam_audit_config" "kms_audit_config" {
+  project = local.project_id
+  service = "cloudkms.googleapis.com"
+
+  # audit_log_config {
+  #   log_type = "DATA_WRITE"
+  # }
 
   audit_log_config {
     log_type = "ADMIN_READ"
@@ -301,8 +333,14 @@ resource "google_logging_metric" "iap_admin_data_write" {
   name        = "iap_admin_data_write"
   description = "Metric for IAP ADMIN_READ and DATA_WRITE events"
   filter      = <<EOT
-    (logName:"projects/${local.project_id}/logs/cloudaudit.googleapis.com%2Factivity" OR  logName:"projects/${local.project_id}/logs/cloudaudit.googleapis.com%2Fdata_access" ) AND 
-    protoPayload.serviceName="iap.googleapis.com" AND severity>=NOTICE
+    (((logName:"projects/${local.project_id}/logs/cloudaudit.googleapis.com%2Factivity" OR  logName:"projects/${local.project_id}/logs/cloudaudit.googleapis.com%2Fdata_access" ) AND 
+    protoPayload.serviceName="iap.googleapis.com" AND severity>=NOTICE)
+    OR
+    (
+      (logName:"projects/${local.project_id}/logs/cloudaudit.googleapis.com%2Factivity") AND 
+      protoPayload.serviceName="cloudkms.googleapis.com"
+    )
+    )
   EOT
 # (protoPayload.methodName:"google.cloud.iap.v1.IdentityAwareProxyAdminService" OR protoPayload.methodName:""  OR protoPayload.methodName:"google.cloud.audit.v1.DataWrite")
   metric_descriptor {
@@ -318,8 +356,8 @@ resource "google_monitoring_alert_policy" "iap_admin_alert" {
   conditions {
     display_name = "IAP Admin Read or Data Write Detected"
     condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/iap_admin_data_write\" resource.type=\"gce_backend_service\""
-      threshold_value = 1
+      filter          = "metric.type=\"logging.googleapis.com/user/iap_admin_data_write\" resource.type=\"global\""
+      threshold_value = 0
       duration        = "0s"
       comparison      = "COMPARISON_GT"
       aggregations {
@@ -339,3 +377,7 @@ resource "google_monitoring_notification_channel" "email" {
     email_address = "hbd777713421@gmail.com" # Replace with your email
   }
 }
+
+
+
+
